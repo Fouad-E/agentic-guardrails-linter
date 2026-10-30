@@ -1,0 +1,7 @@
+{
+  "max_lines": 150,
+  "banned_functions": ["eval", "exec"],
+  "disallowed_imports": {
+    "domain": ["infrastructure", "database"]
+  }
+}

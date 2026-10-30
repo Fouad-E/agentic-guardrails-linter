@@ -1,94 +1,63 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-const RED = "\x1b[31m";
-const GREEN = "\x1b[32m";
-const YELLOW = "\x1b[33m";
-const CYAN = "\x1b[36m";
-const RESET = "\x1b[0m";
-
-const FORBIDDEN_PATTERNS = ["eval(", "exec(", "pickle.loads"];
-const MAX_FILE_LINES = 250;
-
-function checkArchitecture(filePath: string): { errors: string[], warnings: string[] } {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const lines = content.split('\n');
-
-    if (lines.length > MAX_FILE_LINES) {
-        errors.push(`File too long (${lines.length} lines > max ${MAX_FILE_LINES}). Agent is creating monolithic code.`);
-    }
-
-    for (const forbidden of FORBIDDEN_PATTERNS) {
-        if (content.includes(forbidden)) {
-            errors.push(`Forbidden instruction detected: '${forbidden.replace('(', '')}'.`);
-        }
-    }
-
-    const targetHelpersFile = path.join(process.cwd(), 'src', 'utils', 'helpers.ts');
-    if (fs.existsSync(targetHelpersFile) && !filePath.endsWith('helpers.ts')) {
-        const helperContent = fs.readFileSync(targetHelpersFile, 'utf-8');
-        const helperFuncs = helperContent.match(/export function ([a-zA-Z0-9_]+)\(/g) || [];
-        
-        for (const funcMatch of helperFuncs) {
-            const funcName = funcMatch.replace('export function ', '').replace('(', '');
-            if (content.includes(`function ${funcName}(`) || content.includes(`const ${funcName} =`)) {
-                errors.push(`Function duplication! '${funcName}()' already exists in utils/helpers.ts.`);
-            }
-        }
-    }
-
-    return { errors, warnings };
+interface GuardrailConfig {
+  max_lines: number;
+  banned_functions: string[];
+  disallowed_imports: Record<string, string[]>;
 }
 
-function main() {
-    console.log(`\n${CYAN}🛡️  [AGENTIC GUARDRAIL - TS] - Scanning codebase architecture...${RESET}\n`);
-
-    const srcDir = path.join(process.cwd(), 'src');
-    if (!fs.existsSync(srcDir)) {
-        console.log(`${YELLOW}Directory 'src/' not found.${RESET}`);
-        process.exit(0);
-    }
-
-    let totalErrors = 0;
-    let totalWarnings = 0;
-
-    function walkDir(dir: string) {
-        const files = fs.readdirSync(dir);
-        for (const file of files) {
-            const fullPath = path.join(dir, file);
-            if (fs.statSync(fullPath).isDirectory()) {
-                walkDir(fullPath);
-            } else if (fullPath.endsWith('.ts') && !fullPath.endsWith('guardrail.ts')) {
-                const { errors, warnings } = checkArchitecture(fullPath);
-                if (errors.length > 0 || warnings.length > 0) {
-                    console.log(`📄 File: ${CYAN}${path.relative(process.cwd(), fullPath)}${RESET}`);
-                    for (const w of warnings) {
-                        console.log(`   ${YELLOW}⚠️  WARNING: ${w}${RESET}`);
-                        totalWarnings++;
-                    }
-                    for (const e of errors) {
-                        console.log(`   ${RED}❌ ERROR: ${e}${RESET}`);
-                        totalErrors++;
-                    }
-                    console.log();
-                }
-            }
-        }
-    }
-
-    walkDir(srcDir);
-
-    console.log("-".repeat(50));
-    if (totalErrors > 0) {
-        console.log(`${RED}🚫 COMMIT BLOCKED: ${totalErrors} critical architectural violation(s) detected.${RESET}\n`);
-        process.exit(1);
-    } else {
-        console.log(`${GREEN}✅ CODEBASE COMPLIANT: No architectural drift. Validation passed!${RESET}\n`);
-        process.exit(0);
-    }
+function loadConfig(rootDir: string): GuardrailConfig {
+  const configPath = path.join(rootDir, '.guardrailrc.json');
+  if (fs.existsSync(configPath)) {
+    return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  }
+  return {
+    max_lines: 150,
+    banned_functions: ['eval', 'exec'],
+    disallowed_imports: { domain: ['infrastructure', 'database'] }
+  };
 }
 
-main();
+export function runTypeScriptGuardrail(targetFilePath: string, rootDir: string): boolean {
+  const config = loadConfig(rootDir);
+  const content = fs.readFileSync(targetFilePath, 'utf-8');
+  const lines = content.split('\n');
+  let hasErrors = false;
+
+  console.log(`\n🛡️ Running TypeScript Guardrail on: ${targetFilePath}`);
+
+  if (lines.length > config.max_lines) {
+    console.error(`❌ [Architecture Error] File exceeds ${config.max_lines} lines limit (${lines.length} lines). Split your code!`);
+    hasErrors = true;
+  }
+
+  for (const fn of config.banned_functions) {
+    const regex = new RegExp(`\\b${fn}\\s*\\(`, 'g');
+    if (regex.test(content)) {
+      console.error(`❌ [Security Alert] Banned unsafe function call detected: '${fn}()'.`);
+      hasErrors = true;
+    }
+  }
+
+  const normalizedPath = targetFilePath.replace(/\\/g, '/');
+  for (const [layer, forbiddenImports] of Object.entries(config.disallowed_imports)) {
+    if (normalizedPath.includes(`/${layer}/`)) {
+      for (const line of lines) {
+        if (line.trim().startsWith('import')) {
+          for (const forbidden of forbiddenImports) {
+            if (line.includes(`/${forbidden}/`) || line.includes(`../${forbidden}`)) {
+              console.error(`❌ [Boundary Error] Layer '${layer}' is forbidden from importing '${forbidden}'! Line: ${line.trim()}`);
+              hasErrors = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (!hasErrors) {
+    console.log(`✅ [Pass] Code respects architecture guardrails.`);
+  }
+  return !hasErrors;
+}
