@@ -1,20 +1,49 @@
 # 🛡️ Agentic Guardrails Linter
 
-A lightweight local linter built in **Python** and **TypeScript** to enforce architecture boundaries, prevent code duplication, and block unsafe AI-generated code drift before it hits production.
+> **Keep your AI agents (Cursor, Windsurf, Copilot, Claude) on a tight leash.**  
+> A dual-stack (Python & TypeScript) architectural guardrail system designed to prevent AI code generators from introducing monoliths, unsafe function calls, or architectural boundary violations.
+
+---
 
 ## 📌 Problem & Solution
-AI coding agents are fast, but they often ignore existing project architecture—duplicating helper functions, introducing banned unsafe methods, or creating monolithic files. 
 
-This repository provides customizable guardrails designed to run in **pre-commit hooks** or **CI pipelines** to ensure engineers stay in control of code structure.
+AI coding agents are fast, but they often ignore existing project architecture:
+1. **Monolithic files**: Generating bloated single-file code instead of modular components.
+2. **Unsafe functions**: Injecting banned methods like `eval()` or `exec()`.
+3. **Boundary violations**: Direct import of infrastructure/database code inside core domain layers.
+
+`agentic-guardrails-linter` acts as an automated architectural gatekeeper for local pre-commit hooks or remote CI/CD pipelines.
+
+---
 
 ## 📁 Repository Structure
-- **`/python`**: Complete Python architecture linter implementation.
-- **`/typescript`**: Complete TypeScript architecture linter implementation with ESM support.
 
-## 🚀 Quick Starts
+- **`/python`**: Complete Python implementation with custom scanner modules.
+- **`/typescript`**: Complete TypeScript (ESM, TS 5) implementation.
+- **`/.github/workflows`**: Automated GitHub Actions CI/CD pipeline.
 
-### TypeScript
-```bash
-cd typescript
-npm install
-npm run lint
+---
+
+## ✨ Features
+
+- **📄 JSON Config Driven (`.guardrailrc.json`)**: Customizable line limits and rules.
+- **🧱 Monolith Prevention**: Flags files exceeding maximum line thresholds.
+- **🔒 Security Enforcement**: Blocks banned unsafe functions.
+- **🗺️ Layer Boundary Protection**: Prevents illegal imports across layers (e.g., `domain` $\rightarrow$ `infrastructure`).
+- **⚡ Dual Stack**: Native support for both **Python 3.11+** and **TypeScript**.
+- **🤖 CI/CD Ready**: Automated validation pipeline included.
+
+---
+
+## 🛠️ Configuration (`.guardrailrc.json`)
+
+Create a `.guardrailrc.json` in your project root:
+
+```json
+{
+  "max_lines": 150,
+  "banned_functions": ["eval", "exec"],
+  "disallowed_imports": {
+    "domain": ["infrastructure", "database"]
+  }
+}
