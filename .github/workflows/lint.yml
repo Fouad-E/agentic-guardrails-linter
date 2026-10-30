@@ -18,7 +18,7 @@ jobs:
       - name: Install dependencies & Run TS Guardrail
         run: |
           cd typescript
-          npm ci
+          npm install
           npm run lint
 
   lint-python:
